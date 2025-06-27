@@ -14,21 +14,21 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-# ✅ Load token from environment variable
+# ✅ Environment Variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 REQUIRED_CHANNEL = '@bigboss_community_kh'
 
 if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN not found. Set it in Render environment.")
+    raise ValueError("❌ BOT_TOKEN not found. Set it in Render environment variables.")
 
-# 📁 Create downloads folder
+# 📁 Ensure 'downloads' folder exists
 os.makedirs('downloads', exist_ok=True)
 
-# ✅ Check if user is subscribed
+# ✅ Subscription check
 async def is_user_subscribed(chat_member):
     return chat_member.status in ['member', 'administrator', 'creator']
 
-# 📥 Download video/audio
+# 📥 Video/Audio downloader
 def download_video(url, is_audio=False):
     ydl_opts = {
         'outtmpl': 'downloads/%(title)s.%(ext)s',
@@ -61,9 +61,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}")]]
             await update.message.reply_text("🚫 សូមចូលរួមក្នុង Channel មុនសិន!", reply_markup=InlineKeyboardMarkup(keyboard))
     except BadRequest:
-        await update.message.reply_text("⚠️ មិនអាចពិនិត្យបានទេ។")
+        await update.message.reply_text("⚠️ មិនអាចពិនិត្យបានទេ។ សូមចូលរួម Channel មុន។")
 
-# 📩 Handle link
+# 📩 Handle link message
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     user_id = update.effective_user.id
@@ -89,7 +89,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text("🔽 សូមជ្រើសទាញយក:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# 🔘 Handle button
+# 🔘 Handle format selection
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -116,11 +116,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await query.message.reply_text(f"❌ បញ្ហា៖ {e}")
 
-# ▶️ Launch bot
+# ▶️ Start the bot
 if __name__ == '__main__':
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(button_handler))
-    print("🤖 Bot is running...")
+    logging.info("🤖 Bot is running...")
     app.run_polling()
