@@ -3,22 +3,25 @@ import os
 import logging
 from yt_dlp import YoutubeDL
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
+    ContextTypes, filters
+)
 from telegram.error import BadRequest
+
+# ✅ Logging setup
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 
 # ✅ Load token from environment variable
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 REQUIRED_CHANNEL = '@bigboss_community_kh'
 
 if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN not found. Make sure it's set in Render environment.")
+    raise ValueError("❌ BOT_TOKEN not found. Set it in Render environment.")
 
-# ✅ Logging setup
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-
-# 📁 Create download folder
+# 📁 Create downloads folder
 os.makedirs('downloads', exist_ok=True)
 
 # ✅ Check if user is subscribed
@@ -58,9 +61,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}")]]
             await update.message.reply_text("🚫 សូមចូលរួមក្នុង Channel មុនសិន!", reply_markup=InlineKeyboardMarkup(keyboard))
     except BadRequest:
-        await update.message.reply_text("⚠️ មិនអាចពិនិត្យបានទេ។ សូមចូលរួម Channel មុន។")
+        await update.message.reply_text("⚠️ មិនអាចពិនិត្យបានទេ។")
 
-# 📩 Handle user message
+# 📩 Handle link
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     user_id = update.effective_user.id
@@ -86,7 +89,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text("🔽 សូមជ្រើសទាញយក:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# 🔘 Handle MP3/MP4 button click
+# 🔘 Handle button
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -104,18 +107,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         filepath, title = download_video(url, is_audio)
         caption = f"✅ Title: {title}\n📁 Format: {kind}"
-        if is_audio:
-            await query.message.reply_audio(audio=open(filepath, 'rb'), caption=caption)
-        else:
-            await query.message.reply_video(video=open(filepath, 'rb'), caption=caption)
+        with open(filepath, 'rb') as f:
+            if is_audio:
+                await query.message.reply_audio(audio=f, caption=caption)
+            else:
+                await query.message.reply_video(video=f, caption=caption)
         os.remove(filepath)
     except Exception as e:
         await query.message.reply_text(f"❌ បញ្ហា៖ {e}")
 
-# ▶️ Start bot
+# ▶️ Launch bot
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(button_handler))
+    print("🤖 Bot is running...")
     app.run_polling()
