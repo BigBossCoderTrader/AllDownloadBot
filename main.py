@@ -1,42 +1,28 @@
-#!/usr/bin/env python3
 import os
-import logging
-import asyncio
 from yt_dlp import YoutubeDL
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
-    ContextTypes, filters
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from telegram.error import BadRequest
 
-# ✅ Logging
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-
-# ✅ Load token and check
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# ⚙️ កំណត់ Token និង Channel
+BOT_TOKEN = '7687165517:AAFU23-OuQvHYJZq7iBpyCuN0YdI7Z2zvi8'
 REQUIRED_CHANNEL = '@bigboss_community_kh'
 
-if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN not found in environment variables!")
-
-# ✅ Create download folder
+# 📁 បង្កើត folder ប្រើសម្រាប់ទាញយក
 os.makedirs('downloads', exist_ok=True)
 
-# ✅ Check if user joined channel
+# ✅ ពិនិត្យថា user បាន join Channel ឬទេ
 async def is_user_subscribed(chat_member):
     return chat_member.status in ['member', 'administrator', 'creator']
 
-# ✅ Download with yt_dlp
+# 📦 Function ទាញវីដេអូ ឬ MP3
 def download_video(url, is_audio=False):
     ydl_opts = {
         'outtmpl': 'downloads/%(title)s.%(ext)s',
-        'format': 'bestaudio/best' if is_audio else 'best',
-        'quiet': True,
-        'noplaylist': True,
         'cookiefile': 'cookies.txt',
+        'format': 'bestaudio/best' if is_audio else 'best',
+        'noplaylist': True,
+        'quiet': True,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -46,12 +32,12 @@ def download_video(url, is_audio=False):
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = ydl.prepare_filename(info)
+        title = info.get("title", "Untitled")
         if is_audio:
             filename = filename.rsplit('.', 1)[0] + ".mp3"
-        title = info.get("title", "Untitled")
         return filename, title
 
-# ✅ /start command
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
@@ -60,11 +46,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("✅ សូមផ្ញើ Link YouTube / TikTok / Facebook មកខ្ញុំ")
         else:
             keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{REQUIRED_CHANNEL.lstrip('@')}")]]
-            await update.message.reply_text("🚫 សូមចូលរួមក្នុង Channel មុនសិន!", reply_markup=InlineKeyboardMarkup(keyboard))
+            await update.message.reply_text(
+                "🚫 សូមចូលរួមក្នុង Channel មុនសិន!", 
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
     except BadRequest:
-        await update.message.reply_text("⚠️ មិនអាចពិនិត្យបានទេ។")
+        await update.message.reply_text("⚠️ មិនអាចពិនិត្យបានទេ។ សូមចូលរួម Channel មុន។")
 
-# ✅ Receive URL
+# 📩 Handle message URL → បង្ហាញ Button MP3/MP4
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     user_id = update.effective_user.id
@@ -77,27 +66,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
     except BadRequest:
         await update.message.reply_text("⚠️ មិនអាចពិនិត្យបានទេ។")
-        return
 
     if not url.startswith("http"):
         await update.message.reply_text("❗ សូមផ្ញើ Link ត្រឹមត្រូវ...")
         return
 
-    # ⚠️ Store per-user context with `chat_data` instead of `user_data` (safer)
-    context.chat_data[update.effective_chat.id] = url
+    # 💾 រក្សាទុក URL ជា context
+    context.user_data['url'] = url
 
+    # បង្ហាញ Button MP3 / MP4
     keyboard = [
         [InlineKeyboardButton("🎧 Download MP3", callback_data="download_mp3")],
         [InlineKeyboardButton("📹 Download MP4", callback_data="download_mp4")]
     ]
     await update.message.reply_text("🔽 សូមជ្រើសទាញយក:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ✅ Button clicked (MP3 or MP4)
+# 🔘 Button Handler
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    url = context.chat_data.get(query.message.chat.id)
+    user_id = query.from_user.id
+    url = context.user_data.get('url')
+
     if not url:
         await query.edit_message_text("❗ សូមផ្ញើ link ម្តងទៀត។")
         return
@@ -108,22 +99,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(f"📥 កំពុងទាញយក {kind}...")
 
     try:
-        filepath, title = download_video(url, is_audio)
+        filepath, title = download_video(url, is_audio=is_audio)
         caption = f"✅ Title: {title}\n📁 Format: {kind}"
-        with open(filepath, 'rb') as f:
-            if is_audio:
-                await query.message.reply_audio(audio=f, caption=caption)
-            else:
-                await query.message.reply_video(video=f, caption=caption)
+        if is_audio:
+            await query.message.reply_audio(audio=open(filepath, 'rb'), caption=caption)
+        else:
+            await query.message.reply_video(video=open(filepath, 'rb'), caption=caption)
         os.remove(filepath)
     except Exception as e:
         await query.message.reply_text(f"❌ បញ្ហា៖ {e}")
 
-# ✅ Run bot
+# ▶️ ចាប់ bot
 if __name__ == '__main__':
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(button_handler))
-    logging.info("🤖 Bot is running...")
     app.run_polling()
